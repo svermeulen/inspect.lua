@@ -1,4 +1,4 @@
-local _tl_compat; if (tonumber((_VERSION or ''):match('[%d.]*$')) or 0) < 5.3 then local p, m = pcall(require, 'compat53.module'); if p then _tl_compat = m end end; local math = _tl_compat and _tl_compat.math or math; local string = _tl_compat and _tl_compat.string or string; local table = _tl_compat and _tl_compat.table or table
+local _tl_compat; if (tonumber((_VERSION or ''):match('[%d.]*$')) or 0) < 5.3 then local p, m = pcall(require, 'compat53.module'); if p then _tl_compat = m end end; local assert = _tl_compat and _tl_compat.assert or assert; local math = _tl_compat and _tl_compat.math or math; local pcall = _tl_compat and _tl_compat.pcall or pcall; local string = _tl_compat and _tl_compat.string or string; local table = _tl_compat and _tl_compat.table or table
 local inspect = {Options = {}, }
 
 
@@ -262,6 +262,11 @@ function Inspector:getId(v)
    return tostring(id)
 end
 
+function table_has_tostring(tbl)
+   local mt = getmetatable(tbl)
+   return mt and type(mt.__tostring) == "function"
+end
+
 function Inspector:putValue(v)
    local buf = self.buf
    local tv = type(v)
@@ -277,6 +282,8 @@ function Inspector:putValue(v)
          puts(buf, tostring(t))
       elseif self.level >= self.depth then
          puts(buf, '{...}')
+      elseif table_has_tostring(t) then
+         puts(buf, tostring(t))
       else
          if self.cycles[t] > 1 then puts(buf, fmt('<%d>', self:getId(t))) end
 
@@ -362,9 +369,20 @@ function inspect.inspect(root, options)
    return table.concat(inspector.buf)
 end
 
+local is_inspecting = false
+
 setmetatable(inspect, {
    __call = function(_, root, options)
-      return inspect.inspect(root, options)
+      assert(not is_inspecting, "Found unsupported recursive use of inspect")
+      is_inspecting = true
+      local ok, result = pcall(inspect.inspect, root, options)
+      is_inspecting = false
+
+      if not ok then
+         error(result)
+      end
+
+      return result
    end,
 })
 

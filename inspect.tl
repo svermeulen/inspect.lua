@@ -262,6 +262,11 @@ function Inspector:getId(v: any): string
    return tostring(id)
 end
 
+function table_has_tostring(tbl:table):boolean
+  local mt = getmetatable(tbl)
+  return mt and type(mt.__tostring) == "function"
+end
+
 function Inspector:putValue(v: any)
    local buf = self.buf
    local tv: string = type(v)
@@ -277,6 +282,8 @@ function Inspector:putValue(v: any)
          puts(buf, tostring(t))
       elseif self.level >= self.depth then
          puts(buf, '{...}')
+      elseif table_has_tostring(t) then
+         puts(buf, tostring(t))
       else
          if self.cycles[t] > 1 then puts(buf, fmt('<%d>', self:getId(t))) end
 
@@ -362,9 +369,20 @@ function inspect.inspect(root: any, options: inspect.Options): string
    return table.concat(inspector.buf as {string})
 end
 
+local is_inspecting = false
+
 setmetatable(inspect, {
    __call = function(_, root: any, options: inspect.Options): string
-      return inspect.inspect(root, options)
+      assert(not is_inspecting, "Found unsupported recursive use of inspect")
+      is_inspecting = true
+      local ok, result = pcall(inspect.inspect, root, options)
+      is_inspecting = false
+
+      if not ok then
+         error(result)
+      end
+
+      return result
    end
 })
 
